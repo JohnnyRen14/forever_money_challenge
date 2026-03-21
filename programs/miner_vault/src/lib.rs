@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("6kvU5Woa1g6hAqRc3MSg7j3PqFC3Xa91285ZqERwi4SB");
 
 #[program]
 pub mod miner_vault {
