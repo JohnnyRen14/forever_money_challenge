@@ -354,21 +354,19 @@ anchor test --skip-deploy --provider.cluster devnet
 A running counter is manipulation-resistant and O(1). Summing a list at runtime would require passing all position accounts in every transaction — complex and attackable by omitting accounts. The counter is always accurate, always atomic.
 
 **Separate Position PDAs instead of a Vec on VaultState**
-Solana accounts have a maximum size. A Vec would hit limits quickly. Separate PDAs are independently verifiable, deletable on close (rent returned), and findable by seeds in O(1) without scanning a list.
+Solana accounts have size limit. A Vec would hit limits quickly. Separate PDAs are independently verifiable, deletable on close (rent returned) and findable by seeds.
 
-**Ceiling check in same instruction as position creation**
-Atomicity. The check and the state write are a single atomic operation. There is no window to exploit between them.
+**Ceiling check in the same instruction during position creation**
+The check and the write state are in a single atomic operation which designed to have no window to exploit between them.
 
-**Positions store a vault backlink**
-`position.vault` stores the VaultState address. This prevents cross-vault substitution attacks where a malicious actor passes a Position PDA from a different vault to manipulate another vault's `deployed_l` counter.
+**`position.vault` stores the VaultState address.** 
+This prevents cross-vault substitution attacks where a malicious actor passes a Position PDA from a different vault to manipulate another vault's `deployed_l` counter.
 
 **NFT mint stored in Position PDA (production)**
 In production, `open_position` CPIs into Raydium which returns an NFT mint representing ownership of the liquidity position. This NFT mint is stored in the Position PDA so `close_position` can CPI back into Raydium with the correct NFT to burn the position and retrieve funds plus fees.
 
 **Squads for production, single keypair for this challenge**
-Squads adds multisig security so no single key can drain the vault. The program code is identical — it just checks whoever is stored in `vault.protocol`. Upgrading requires no program changes, only a change to which pubkey is passed at `initialize_vault`.
-
----
+Squads adds multisig security so no single key can drain the vault. The program code is identical — it just checks whoever is stored in `vault.protocol`. Upgrading requires no program changes, only a change to which pubkey is passed at `initialize_vault`
 
 ---
 
@@ -385,6 +383,7 @@ The following are intentionally not implemented in this version:
 | Withdraw instruction | No real tokens to withdraw | Protocol-only CPI to SPL token program |
 | Raydium CPI | LP operations are mocked | `open_position` CPIs into Raydium CLMM, stores NFT mint in Position PDA |
 | NFT mint storage | No real Raydium integration | Position PDA stores `nft_mint: Pubkey` returned by Raydium |
+
 
 The security layer — role separation, ceiling enforcement, miner rotation and cross-vault protection — is fully implemented and production-ready.
 ---
