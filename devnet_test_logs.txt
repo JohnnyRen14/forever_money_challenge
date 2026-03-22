@@ -1,0 +1,148 @@
+johnnyren@JohnnyREN-LapTop:/mnt/c/Users/14lee/OneDrive/桌面/forever_money_challenge$ anchor test --skip-deploy --provider.cluster devnet
+WARNING: `@coral-xyz/anchor` version(^0.31.0) and the current CLI version(0.32.1) don't match.
+
+        This can lead to unwanted behavior. To fix, upgrade the package by running:
+
+        yarn upgrade @coral-xyz/anchor@0.32.1
+
+warning: unexpected `cfg` condition value: `custom-heap`
+ --> programs/miner_vault/src/lib.rs:5:1
+  |
+5 | #[program]
+  | ^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name`   
+  = help: consider adding `custom-heap` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the macro `$crate::custom_heap_default` which comes from the expansion of the attribute macro `program` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `custom-panic`
+ --> programs/miner_vault/src/lib.rs:5:1
+  |
+5 | #[program]
+  | ^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name`   
+  = help: consider adding `custom-panic` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the macro `$crate::custom_panic_default` which comes from the expansion of the attribute macro `program` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+ --> programs/miner_vault/src/lib.rs:5:1
+  |
+5 | #[program]
+  | ^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name`   
+  = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the attribute macro `program` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+ --> programs/miner_vault/src/lib.rs:5:1
+  |
+5 | #[program]
+  | ^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name`   
+  = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+   --> programs/miner_vault/src/lib.rs:143:10
+    |
+143 | #[derive(Accounts)]
+    |          ^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name` 
+    = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+   --> programs/miner_vault/src/lib.rs:160:10
+    |
+160 | #[derive(Accounts)]
+    |          ^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name` 
+    = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+   --> programs/miner_vault/src/lib.rs:172:10
+    |
+172 | #[derive(Accounts)]
+    |          ^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name` 
+    = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+   --> programs/miner_vault/src/lib.rs:198:10
+    |
+198 | #[derive(Accounts)]
+    |          ^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name` 
+    = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `anchor-debug`
+   --> programs/miner_vault/src/lib.rs:220:10
+    |
+220 | #[derive(Accounts)]
+    |          ^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cpi`, `default`, `idl-build`, `no-entrypoint`, `no-idl`, and `no-log-ix-name` 
+    = help: consider adding `anchor-debug` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: this warning originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: `miner_vault` (lib) generated 14 warnings (5 duplicates)
+    Finished `release` profile [optimized] target(s) in 2.07s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.75s
+     Running unittests src/lib.rs (/mnt/c/Users/14lee/OneDrive/桌面/forever_money_challenge/target/debug/deps/miner_vault-8f8de180c600c5aa)
+
+Found a 'test' script in the Anchor.toml. Running it as a test suite!
+
+Running test suite: "/mnt/c/Users/14lee/OneDrive/桌面/forever_money_challenge/Anchor.toml"
+
+yarn run v1.22.22
+warning package.json: No license field
+$ /mnt/c/Users/14lee/OneDrive/桌面/forever_money_challenge/node_modules/.bin/ts-mocha -p ./tsconfig.json -t 1000000 'tests/**/*.ts'
+(node:5018) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/c/Users/14lee/OneDrive/%E6%A1%8C%E9%9D%A2/forever_money_challenge/tests/miner_vault.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /mnt/c/Users/14lee/OneDrive/桌面/forever_money_challenge/package.json.     
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+  miner_vault
+=================================
+VaultState PDA: EDGJEzQ6qVfbuYNBsYqirnbED7sbRoDsirre1WBUSfV3
+=================================
+    ✔ 4 — protocol initializes vault with correct state (575ms)
+    ✔ 1 ★ miner calls set_ceiling → rejected (WrongAuthority) (84ms)
+    ✔ 3 ★ protocol calls open_position → rejected (WrongAuthority) (70ms)
+=================================
+Position PDA (id=0): 9zNFocnDRnmUfLyijfepRewVd9Yj9JaxgEjhr47Kiqt1
+=================================
+    ✔ 5 — miner opens valid position within ceiling (position 0) (601ms)
+    ✔ 2 ★ miner opens position exceeding ceiling → rejected (CeilingExceeded) (108ms)
+    ✔ 6 — miner closes their position → deployed_l decreases (697ms)
+    ✔ 7 — protocol force-closes a miner position → deployed_l decreases (1095ms)
+    ✔ 8 — closing a position frees capacity to open a new one at the ceiling (1586ms)
+    ✔ 9 — old miner is rejected after miner rotation (832ms)
+    ✔ 10 — ceiling below deployed_l prevents any new open (1587ms)
+    ✔ 11 — stranger is rejected from every instruction (143ms)
+
+
+  11 passing (8s)
+
+Done in 16.18s.

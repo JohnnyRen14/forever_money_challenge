@@ -339,6 +339,9 @@ solana airdrop 2
 
 # Update Anchor.toml cluster to devnet, then deploy
 anchor deploy --provider.cluster devnet
+
+# Run test on devnet (Require minimum of 8 SOL)
+anchor test --skip-deploy --provider.cluster devnet
 ```
 
 ---
