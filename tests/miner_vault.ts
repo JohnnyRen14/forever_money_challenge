@@ -152,6 +152,7 @@ describe("miner_vault", () => {
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
+    console.log("Position PDA (id=0):", positionKey.toString());
     expect(vault.deployedL.toString()).to.equal("500");
     expect(vault.nextPositionId.toString()).to.equal("1");
 
@@ -193,6 +194,7 @@ describe("miner_vault", () => {
 
   it("6 — miner closes their position → deployed_l decreases", async () => {
     const [positionKey] = derivePositionPda(vaultPda, 0, program.programId);
+    console.log("Position PDA (id=0):", positionKey.toString());
 
     await program.methods
       .closePosition(new anchor.BN(0))
@@ -205,6 +207,7 @@ describe("miner_vault", () => {
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
+    console.log("VaultState PDA:", vaultPda.toString());
     expect(vault.deployedL.toString()).to.equal("0");
 
     // The Position PDA account should no longer exist.
