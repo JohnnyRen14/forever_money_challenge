@@ -1,5 +1,7 @@
 
-# 🔐 miner_vault
+# 🔐 miner_vault 
+
+Deplopyed on devnet: 6kvU5Woa1g6hAqRc3MSg7j3PqFC3Xa91285ZqERwi4SB
 
 ### Permissioned Liquidity Vault · Solana 
 
