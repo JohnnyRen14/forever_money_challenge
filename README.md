@@ -373,24 +373,6 @@ Squads adds multisig security so no single key can drain the vault. The program 
 ## ⚠️ Implementation Disclaimer
 
 This program is built for the ForeverMoney (SN98) Solana Developer Challenge.
-LP operations are mocked per the challenge specification — positions are pure data `{ id, tick_lower, tick_upper, liquidity }`. 
-
-The following are intentionally not implemented in this version:
-
-| Feature | Reason | Production Plan |
-|---|---|---|
-| Token Account PDA | No real tokens in mocked version | SPL token account PDA holding actual funds |
-| Withdraw instruction | No real tokens to withdraw | Protocol-only CPI to SPL token program |
-| Raydium CPI | LP operations are mocked | `open_position` CPIs into Raydium CLMM, stores NFT mint in Position PDA |
-| NFT mint storage | No real Raydium integration | Position PDA stores `nft_mint: Pubkey` returned by Raydium |
-
-
-The security layer — role separation, ceiling enforcement, miner rotation and cross-vault protection — is fully implemented and production-ready.
----
-
-## ⚠️ Implementation Disclaimer
-
-This program is built for the ForeverMoney (SN98) Solana Developer Challenge.
 LP operations are mocked per the challenge specification — positions are pure 
 data `{ id, tick_lower, tick_upper, liquidity }`. 
 
