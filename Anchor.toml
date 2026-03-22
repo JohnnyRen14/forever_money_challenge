@@ -12,7 +12,7 @@ miner_vault = "6kvU5Woa1g6hAqRc3MSg7j3PqFC3Xa91285ZqERwi4SB"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
