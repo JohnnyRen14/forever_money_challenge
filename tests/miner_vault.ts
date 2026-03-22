@@ -67,18 +67,35 @@ describe("miner_vault", () => {
   // ── Setup ─────────────────────────────────────────────────────────────────
 
   before(async () => {
-    // Fund miner, newMiner, and stranger so they can pay for transactions.
-    const conn = provider.connection;
-    const [sig1, sig2, sig3] = await Promise.all([
-      conn.requestAirdrop(miner.publicKey, 4 * anchor.web3.LAMPORTS_PER_SOL),
-      conn.requestAirdrop(newMiner.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL),
-      conn.requestAirdrop(stranger.publicKey, 1 * anchor.web3.LAMPORTS_PER_SOL),
-    ]);
-    await Promise.all([
-      conn.confirmTransaction(sig1),
-      conn.confirmTransaction(sig2),
-      conn.confirmTransaction(sig3),
-    ]);
+    // On devnet airdrops are rate limited so we fund test wallets
+    // directly from the provider wallet instead of requesting airdrops.
+    const tx = new anchor.web3.Transaction();
+
+    tx.add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: protocol.publicKey,
+        toPubkey: miner.publicKey,
+        lamports: 4 * anchor.web3.LAMPORTS_PER_SOL,
+      })
+    );
+
+    tx.add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: protocol.publicKey,
+        toPubkey: newMiner.publicKey,
+        lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+      })
+    );
+
+    tx.add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: protocol.publicKey,
+        toPubkey: stranger.publicKey,
+        lamports: 1 * anchor.web3.LAMPORTS_PER_SOL,
+      })
+    );
+
+    await provider.sendAndConfirm(tx);
   });
 
   // ── Test 4: happy-path initialization ────────────────────────────────────
@@ -89,10 +106,13 @@ describe("miner_vault", () => {
       .accounts({
         vaultState: vaultPda,
         protocol: protocol.publicKey,
-      })
+      } as any)
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
+    console.log("=================================");
+    console.log("VaultState PDA:", vaultPda.toString());
+    console.log("=================================");
     expect(vault.protocol.toString()).to.equal(protocol.publicKey.toString());
     expect(vault.miner.toString()).to.equal(miner.publicKey.toString());
     expect(vault.ceiling.toString()).to.equal(CEILING.toString());
@@ -108,9 +128,8 @@ describe("miner_vault", () => {
         .setCeiling(new anchor.BN("9999"))
         .accounts({
           vaultState: vaultPda,
-          // Pass miner as the 'protocol' account — should be rejected
           protocol: miner.publicKey,
-        })
+        } as any)
         .signers([miner])
         .rpc(),
       "WrongAuthority"
@@ -128,9 +147,8 @@ describe("miner_vault", () => {
         .accounts({
           vaultState: vaultPda,
           position: positionKey,
-          // Pass protocol as the 'miner' account — should be rejected
           miner: protocol.publicKey,
-        })
+        } as any)
         .rpc(),
       "WrongAuthority"
     );
@@ -140,6 +158,9 @@ describe("miner_vault", () => {
 
   it("5 — miner opens valid position within ceiling (position 0)", async () => {
     const [positionKey] = derivePositionPda(vaultPda, 0, program.programId);
+    console.log("=================================");
+    console.log("Position PDA (id=0):", positionKey.toString());
+    console.log("=================================");
 
     await program.methods
       .openPosition(-100, 100, new anchor.BN("500"))
@@ -147,12 +168,11 @@ describe("miner_vault", () => {
         vaultState: vaultPda,
         position: positionKey,
         miner: miner.publicKey,
-      })
+      } as any)
       .signers([miner])
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
-    console.log("Position PDA (id=0):", positionKey.toString());
     expect(vault.deployedL.toString()).to.equal("500");
     expect(vault.nextPositionId.toString()).to.equal("1");
 
@@ -178,7 +198,7 @@ describe("miner_vault", () => {
           vaultState: vaultPda,
           position: positionKey,
           miner: miner.publicKey,
-        })
+        } as any)
         .signers([miner])
         .rpc(),
       "CeilingExceeded"
@@ -194,7 +214,6 @@ describe("miner_vault", () => {
 
   it("6 — miner closes their position → deployed_l decreases", async () => {
     const [positionKey] = derivePositionPda(vaultPda, 0, program.programId);
-    console.log("Position PDA (id=0):", positionKey.toString());
 
     await program.methods
       .closePosition(new anchor.BN(0))
@@ -202,15 +221,13 @@ describe("miner_vault", () => {
         vaultState: vaultPda,
         position: positionKey,
         miner: miner.publicKey,
-      })
+      } as any)
       .signers([miner])
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
-    console.log("VaultState PDA:", vaultPda.toString());
     expect(vault.deployedL.toString()).to.equal("0");
 
-    // The Position PDA account should no longer exist.
     const raw = await provider.connection.getAccountInfo(positionKey);
     expect(raw).to.be.null;
   });
@@ -218,7 +235,6 @@ describe("miner_vault", () => {
   // ── Test 7: protocol force-closes a position ──────────────────────────────
 
   it("7 — protocol force-closes a miner position → deployed_l decreases", async () => {
-    // Open a fresh position first (next_position_id is now 1).
     const [positionKey] = derivePositionPda(vaultPda, 1, program.programId);
 
     await program.methods
@@ -227,21 +243,20 @@ describe("miner_vault", () => {
         vaultState: vaultPda,
         position: positionKey,
         miner: miner.publicKey,
-      })
+      } as any)
       .signers([miner])
       .rpc();
 
     let vault = await program.account.vaultState.fetch(vaultPda);
     expect(vault.deployedL.toString()).to.equal("400");
 
-    // Protocol emergency override.
     await program.methods
       .forceClosePosition(new anchor.BN(1))
       .accounts({
         vaultState: vaultPda,
         position: positionKey,
         protocol: protocol.publicKey,
-      })
+      } as any)
       .rpc();
 
     vault = await program.account.vaultState.fetch(vaultPda);
@@ -254,38 +269,33 @@ describe("miner_vault", () => {
   // ── Test 8: close then reopen within freed capacity ───────────────────────
 
   it("8 — closing a position frees capacity to open a new one at the ceiling", async () => {
-    // next_position_id is now 2
     const [pos2Key] = derivePositionPda(vaultPda, 2, program.programId);
 
-    // Open at the full ceiling.
     await program.methods
       .openPosition(-50, 50, new anchor.BN("1000"))
-      .accounts({ vaultState: vaultPda, position: pos2Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos2Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
 
-    // Close it.
     await program.methods
       .closePosition(new anchor.BN(2))
-      .accounts({ vaultState: vaultPda, position: pos2Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos2Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
 
-    // Should be able to open at the ceiling again.
     const [pos3Key] = derivePositionPda(vaultPda, 3, program.programId);
     await program.methods
       .openPosition(-50, 50, new anchor.BN("1000"))
-      .accounts({ vaultState: vaultPda, position: pos3Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos3Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
     expect(vault.deployedL.toString()).to.equal("1000");
 
-    // Cleanup so later tests start at 0.
     await program.methods
       .closePosition(new anchor.BN(3))
-      .accounts({ vaultState: vaultPda, position: pos3Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos3Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
   });
@@ -293,16 +303,14 @@ describe("miner_vault", () => {
   // ── Test 9: old miner rejected after rotation ─────────────────────────────
 
   it("9 — old miner is rejected after miner rotation", async () => {
-    // Protocol rotates to newMiner.
     await program.methods
       .setMiner(newMiner.publicKey)
-      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey })
+      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey } as any)
       .rpc();
 
     const vault = await program.account.vaultState.fetch(vaultPda);
     expect(vault.miner.toString()).to.equal(newMiner.publicKey.toString());
 
-    // Old miner tries to open a position.
     const [positionKey] = derivePositionPda(vaultPda, 4, program.programId);
     await expectAnchorError(
       program.methods
@@ -311,66 +319,59 @@ describe("miner_vault", () => {
           vaultState: vaultPda,
           position: positionKey,
           miner: miner.publicKey,
-        })
+        } as any)
         .signers([miner])
         .rpc(),
       "WrongAuthority"
     );
 
-    // Restore original miner for subsequent tests.
     await program.methods
       .setMiner(miner.publicKey)
-      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey })
+      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey } as any)
       .rpc();
   });
 
   // ── Test 10: ceiling set below deployed_l blocks new opens ───────────────
 
   it("10 — ceiling below deployed_l prevents any new open", async () => {
-    // next_position_id is now 4
     const [pos4Key] = derivePositionPda(vaultPda, 4, program.programId);
 
-    // Open a position so deployed_l > 0.
     await program.methods
       .openPosition(-10, 10, new anchor.BN("500"))
-      .accounts({ vaultState: vaultPda, position: pos4Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos4Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
 
-    // Protocol lowers ceiling to below current deployed_l.
     await program.methods
       .setCeiling(new anchor.BN("400"))
-      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey })
+      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey } as any)
       .rpc();
 
-    // Even opening 1 unit more must fail.
     const [pos5Key] = derivePositionPda(vaultPda, 5, program.programId);
     await expectAnchorError(
       program.methods
         .openPosition(-5, 5, new anchor.BN("1"))
-        .accounts({ vaultState: vaultPda, position: pos5Key, miner: miner.publicKey })
+        .accounts({ vaultState: vaultPda, position: pos5Key, miner: miner.publicKey } as any)
         .signers([miner])
         .rpc(),
       "CeilingExceeded"
     );
 
-    // Cleanup and restore ceiling.
     await program.methods
       .closePosition(new anchor.BN(4))
-      .accounts({ vaultState: vaultPda, position: pos4Key, miner: miner.publicKey })
+      .accounts({ vaultState: vaultPda, position: pos4Key, miner: miner.publicKey } as any)
       .signers([miner])
       .rpc();
 
     await program.methods
       .setCeiling(new anchor.BN("1000"))
-      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey })
+      .accounts({ vaultState: vaultPda, protocol: protocol.publicKey } as any)
       .rpc();
   });
 
   // ── Test 11: stranger is rejected from any instruction ────────────────────
 
   it("11 — stranger is rejected from every instruction", async () => {
-    // Attempt open_position as a completely unknown wallet.
     const [positionKey] = derivePositionPda(vaultPda, 5, program.programId);
     await expectAnchorError(
       program.methods
@@ -379,20 +380,19 @@ describe("miner_vault", () => {
           vaultState: vaultPda,
           position: positionKey,
           miner: stranger.publicKey,
-        })
+        } as any)
         .signers([stranger])
         .rpc(),
       "WrongAuthority"
     );
 
-    // Attempt set_ceiling as a completely unknown wallet.
     await expectAnchorError(
       program.methods
         .setCeiling(new anchor.BN("9999"))
         .accounts({
           vaultState: vaultPda,
           protocol: stranger.publicKey,
-        })
+        } as any)
         .signers([stranger])
         .rpc(),
       "WrongAuthority"
