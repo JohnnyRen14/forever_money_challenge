@@ -1,251 +1,403 @@
-# miner_vault
 
-A permissioned liquidity vault program on Solana, built for the ForeverMoney (SN98) Developer Challenge.
+# 🔐 miner_vault
+
+### Permissioned Liquidity Vault · Solana 
+
+A vault program that enforces strict role separation between **protocol admin** and **AI miner**, with atomic ceiling enforcement on liquidity deployments.
 
 ---
 
-## Ecosystem Context
+## 📖 Table of Contents
 
-ForeverMoney is an automated liquidity manager built on Bittensor. Here is how the three layers fit together:
+- [Ecosystem Context](#-ecosystem-context)
+- [What This Program Does](#-what-this-program-does)
+- [Architecture](#-architecture)
+- [Instructions](#-instructions)
+- [Permission Matrix](#-permission-matrix)
+- [Part 1: Design](#-part-1-design)
+- [Error Codes](#-error-codes)
+- [Tests](#-tests)
+- [Getting Started](#-getting-started)
+- [Design Decisions](#-design-decisions)
+
+---
+
+## 🌐 Ecosystem Context
 
 ```
-Bittensor (SN98)          ForeverMoney              Raydium CLMM
-AI miners compete    →    picks winner,         →    actual liquidity
-for best strategy         executes strategy          positions & fees
-                               ↑
-                        miner_vault lives here
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Bittensor     │     │  ForeverMoney    │     │  Raydium CLMM  │
+│                 │     │                  │     │                 │
+│  AI miners  ───────►  │  picks winner ───────►  │  liquidity     │
+│  compete for   │     │  executes        │     │  positions &    │
+│  best strategy │     │  strategy        │     │  fees earned    │
+└─────────────────┘     └────────┬─────────┘     └─────────────────┘
+                                  │
+                          ┌───────▼────────┐
+                          │  miner_vault   │
+                          │  (this program)│
+                          │                │
+                          │  holds funds   │
+                          │  enforces rules│
+                          └────────────────┘
 ```
 
-- **Bittensor** — AI marketplace where miners compete to produce the best liquidity strategy
-- **ForeverMoney** — the bridge that takes the winning strategy and executes it on-chain
-- **Raydium** — the CLMM pool where liquidity actually gets deployed and fees are earned
+| Layer | What It Is | Role |
+|---|---|---|
+| **Bittensor** | AI agent marketplace | Coordinates miners competing for best strategy |
+| **ForeverMoney** | The bridge | Takes winning strategy and executes it on-chain |
+| **Raydium** | CLMM DEX on Solana | Where liquidity is deployed and fees are earned |
+| **miner_vault** | Proposed program | Holds capital safely, enforces all rules |
 
 ---
 
-## What This Program Does
+## 🏗 What This Program Does
 
-Once deployed, any protocol can call `initialize_vault` to create their own vault. The protocol passes in a miner pubkey and a ceiling. From that point:
+Once deployed, any protocol can call `initialize_vault` to create their own vault. The program enforces three guarantees:
 
-- The **protocol** controls the vault rules (ceiling, miner, emergency close)
-- The **miner** (an AI bot wallet) can open and close liquidity positions
-- The **funds** sit in a PDA — no private key exists, only the program can touch them
-- The **miner cannot withdraw** — there is simply no instruction for that
+> **1. Role Separation** — Protocol and miner can only do their own job. Protocol can create vault, change the miner, adjust ceiling and force close position if needed. Miner then could only open and close positon.
 
-Multiple protocols can use the same deployed program. Each gets their own completely separate vault with their own funds, miner, and positions.
+> **2. Ceiling Enforcement** — The miner can never deploy more liquidity than the protocol allows. The check is atomic therefore impossible to race or split across transactions.
+
+> **3. Non-Custodial Miner** — The miner has zero ability to withdraw funds as it just simply no function to do it. All funds is controlled in the token account which is a PDA.
+
+This program can call multiple time by different protocols where each protocol gets their own completely isolated vault — separate VaultState, separate funds and separate miner.
 
 ---
 
-## How Accounts Work
+## 🗂 Architecture
 
-This program creates and controls three types of PDA accounts:
+### Accounts Overview
+
+```
+miner_vault Program (deployed by us)
+│
+├── VaultState PDA          ← the rulebook
+│   seeds: ["vault", protocol_pubkey]
+│
+├── Position PDA            ← created for each open position
+│   seeds: ["position", vault_state_pubkey, position_id]
+│
+└── Token Account PDA       ← holds actual funds (production only)
+    seeds: ["vault_token", vault_state_pubkey]
+```
+
+---
 
 ### VaultState PDA
-Seeds: `["vault", protocol_pubkey]`
 
-The rulebook. Created once when the protocol calls `initialize_vault`. Stores:
+> Seeds: `["vault", protocol_pubkey]`
+> Created at: `initialize_vault` initialize_vault can only called by the protocol on the first time
 
-```
-protocol          → who is the boss (set at init, cannot change)
-miner             → which wallet can open/close positions
-ceiling           → max liquidity the miner can deploy (in L units)
-deployed_l        → running total of liquidity currently in open positions
-next_position_id  → auto-incrementing counter that gives each position a unique ID
-bump              → PDA bump seed stored for lookups
-```
+| Field | Type | Description |
+|---|---|---|
+| `protocol` | `Pubkey` | Permanent admin authority, never changes |
+| `miner` | `Pubkey` | Rotating operator — updatable via `set_miner` |
+| `ceiling` | `u128` | Maximum active liquidity amount the miner may deploy  — only updatable by protocol via `set_ceiling`|
+| `deployed_l` | `u128` | Running total of active open position liquidities |
+| `next_position_id` | `u64` | Auto-incrementing counter used as unique position seed |
+| `bump` | `u8` | Stored bump for gas-free PDA re-derivation |
 
-### Token Account PDA
-Seeds: `["vault_token", vault_state_pubkey]`
-
-The safe. Holds the actual tokens (funds). No private key exists for it — only the program can move tokens in or out. Created once at `initialize_vault`.
+---
 
 ### Position PDA
-Seeds: `["position", vault_state_pubkey, position_id]`
 
-One created per open position. Stores:
+> Seeds: `["position", vault_state_pubkey, position_id_le_bytes]`
+> Created at: `open_position` · Deleted at: `close_position` / `force_close_position`
 
-```
-vault       → which vault this position belongs to (prevents cross-vault attacks)
-id          → unique position ID (from next_position_id counter)
-tick_lower  → bottom of the price range
-tick_upper  → top of the price range
-liquidity   → how much L is deployed in this position
-bump        → PDA bump seed stored for lookups
-```
+| Field | Type | Description |
+|---|---|---|
+| `vault` | `Pubkey` | vault_state_address |
+| `id` | `u64` | Unique ID copied from `next_position_id` at creation |
+| `tick_lower` | `i32` | Bottom of the price range |
+| `tick_upper` | `i32` | Top of the price range |
+| `liquidity` | `u128` | Liquidity deployed in this position |
+| `bump` | `u8` | Stored bump for gas-free PDA re-derivation |
 
-Created when miner calls `open_position`. Deleted when miner calls `close_position` or protocol calls `force_close_position`.
-
----
-
-## Instructions
-
-### Protocol Only
-
-**`initialize_vault(ceiling_l: u128, miner: Pubkey)`**
-- Creates the VaultState PDA and Token Account PDA
-- The signer becomes the permanent protocol authority
-- The miner pubkey passed in becomes the operator
-- Sets ceiling and deployed_l starts at 0
-
-**`set_ceiling(new_ceiling_l: u128)`**
-- Updates the ceiling in VaultState
-- Can be set above or below current deployed_l
-- If set below current deployed_l, no new positions can be opened until enough are closed
-
-**`force_close_position(position_id: u64)`**
-- Protocol emergency override
-- Closes any position regardless of who opened it
-- Deletes the Position PDA
-- Subtracts the position liquidity from deployed_l
-
-### Miner Only
-
-**`open_position(tick_lower: i32, tick_upper: i32, liquidity: u128)`**
-- Checks signer is the current miner
-- Checks deployed_l + liquidity <= ceiling, rejects if not
-- Creates a Position PDA using next_position_id as seed
-- Increments next_position_id in VaultState
-- Adds liquidity to deployed_l
-
-**`close_position(position_id: u64)`**
-- Checks signer is the current miner
-- Checks the position belongs to this vault
-- Deletes the Position PDA (rent returned)
-- Subtracts position liquidity from deployed_l
+> **Production note:** In a full Raydium integration, Position PDA would also store `nft_mint: Pubkey` — the NFT that Raydium mints to represent ownership of the liquidity position. When `open_position` CPIs into Raydium, Raydium returns this NFT mint address which gets stored here. When `close_position` is called, the program reads this NFT mint from the Position PDA and CPIs back into Raydium to burn it, returning tokens plus earned fees to the vault. If this isn't implemented we are not able to locate the position at Raydium.
 
 ---
 
-## Permission Matrix
+### Token Account PDA _(Production Only)_
+
+> Seeds: `["vault_token", vault_state_pubkey]`
+
+**Not yet implemented in here** as LP operations are mocked per the challenge specification. In production this PDA would hold actual SPL tokens. No private key exists for it — only the program can move funds in or out via CPI.
+
+---
+
+## 📋 Instructions
+
+### For Protocol and Only Protocol
+
+
+initialize_vault
+
+- Creates the `VaultState` PDA
+- The signer becomes the **permanent** protocol authority
+- The `miner` pubkey passed in becomes the initial operator
+- `deployed_l` starts at `0`, `next_position_id` starts at `0`
+
+set_ceiling
+
+- Updates `VaultState.ceiling`
+- Can be set above **or** below current `deployed_l`
+- If set below current `deployed_l`, no new positions can be opened until capacity is freed
+
+set_miner
+
+- Updates `VaultState.miner` in place
+- Funds and all existing Position PDAs are **completely untouched**
+- **Only** Old miner instantly loses authority and New miner instantly gains it
+- Therefore no fund migration required
+
+force_close_position
+
+- Emergency override — closes **any** position regardless of state
+- Deletes the Position PDA, returns rent to protocol
+- Subtracts position liquidity from `deployed_l`
+
+---
+
+### For Miner
+
+open_position
+
+- Checks signer is the current miner
+- Atomically checks `deployed_l + liquidity <= ceiling` — **rejects if exceeded**
+- Creates a Position PDA seeded with `next_position_id`
+- Increments `next_position_id` and adds to `deployed_l`
+
+close_position
+
+- Checks signer is the current miner
+- Verifies position belongs to this vault (cross-vault protection)
+- Deletes the Position PDA, returns rent to miner
+- Subtracts position liquidity from `deployed_l`
+
+---
+
+## 🔐 Permission Matrix
 
 | Instruction | Protocol | Miner | Anyone Else |
-|---|---|---|---|
+|:---|:---:|:---:|:---:|
 | `initialize_vault` | ✅ | ❌ | ❌ |
 | `set_ceiling` | ✅ | ❌ | ❌ |
+| `set_miner` | ✅ | ❌ | ❌ |
 | `force_close_position` | ✅ | ❌ | ❌ |
 | `open_position` | ❌ | ✅ | ❌ |
 | `close_position` | ❌ | ✅ | ❌ |
 
----
-
-## Part 1: Design
-
-### 1A. Permissioned Vault System on Solana
-
-#### What existing tools are used and why
-
-**Anchor framework** — handles account validation boilerplate automatically, prevents account confusion attacks, and generates an IDL for frontend integration. Industry standard for Solana programs.
-
-**SPL Token program** — handles the token account PDA that holds actual funds. Battle-tested, no need to build custom token handling.
-
-**Squads Protocol v4 (production)** — in production the protocol authority stored in VaultState would be a Squads multisig PDA rather than a single keypair. Squads is the Solana equivalent of Gnosis Safe — multiple team members must co-sign before any admin action goes through. This ensures no single person can unilaterally drain the vault. For this challenge the protocol is a single keypair for simplicity, but switching to Squads requires zero program code changes — the program just checks whoever is stored in `vault.protocol`.
-
-#### What is built custom
-
-The `miner_vault` program itself. There is no Solana equivalent of Zodiac Roles, so role separation is enforced directly in the program logic using signer checks on every instruction.
-
-#### How the miner is prevented from withdrawing
-
-The tokens sit in a Token Account PDA — no private key exists for it. The program exposes no withdraw instruction to the miner role. The miner can only call `open_position` and `close_position`, which track liquidity deployments but never transfer tokens to external wallets. Even if the miner tried to craft a custom transaction targeting the token account, the program would reject it because the account is owned by the program PDA.
-
-#### How to change the miner without migrating funds
-
-The protocol calls `set_miner(new_miner: Pubkey)` which updates `VaultState.miner` in place. The Token Account PDA and all funds are completely untouched. All existing Position PDAs remain open. The old miner key instantly loses all authority and the new miner key instantly gains it.
+Permissions are enforced via Anchor `has_one` which every instruction context validates the signer before any state is touched.
 
 ---
 
-### 1B. Ceiling Enforcement
-
-#### How and where the ceiling is enforced
-
-The ceiling lives inside the `miner_vault` program on the VaultState PDA. Two fields work together:
-
-- `ceiling` — set by the protocol, can be updated anytime
-- `deployed_l` — running total of all currently open position liquidities
-
-On every `open_position` call before any state changes:
-
-```rust
-require!(
-    vault.deployed_l.checked_add(liquidity).unwrap() <= vault.ceiling,
-    ErrorCode::CeilingExceeded
-);
-```
-
-On every `close_position` or `force_close_position`:
-
-```rust
-vault.deployed_l = vault.deployed_l.checked_sub(position.liquidity).unwrap();
-```
-
-#### Does it live in the vault system or a separate layer
-
-It lives inside the same program on the same VaultState PDA. Keeping it in one place means the ceiling check is atomic with the position creation — there is no window between checking and acting where something could slip through.
-
-#### Can the miner split transactions to bypass the ceiling
-
-No. `deployed_l` is a persistent on-chain field read fresh at the start of every transaction. Each transaction is atomic — it either fully succeeds or fully reverts. There is no way to read a stale version of `deployed_l`. Even sending many transactions in parallel, each one reads the latest committed state. The only way `deployed_l` decreases is when a position is actually closed.
+# Below is for Challenge **ForeverMoney (SN98) Solana Developer Challenge**
 
 ---
 
-## Error Codes
+## 📐 Part 1: Design
 
-| Error | When It Triggers |
+### 1A — Permissioned Vault System on Solana
+
+#### Solana Approach
+
+**Existing tools used:**
+
+| Tool | Why |
 |---|---|
-| `WrongAuthority` | Signer is not the expected role for that instruction |
-| `CeilingExceeded` | open_position would push deployed_l over ceiling |
-| `InvalidPosition` | Position does not belong to this vault |
-| `ArithmeticOverflow` | Liquidity math overflow |
+| **Anchor** | Accounts boilerplate. Industry standard. |
+| **SPL Token** _(production)_ | Handles the Token Account PDA that holds actual funds. Industry standard. |
+| **Squads Protocol v4** _(production)_ | Solana's equivalent of Gnosis Safe. In production, `vault.protocol` would be a Squads multisig PDA. No code changes required to upgrade from single keypair to Squads. |
+
+**Custom Built:**
+
+The `miner_vault` program is built by me. There is no exisiting tools in Solana equivalent of Zodiac Roles, so role separation is enforced natively in the program using Anchor `has_one` constraints on every instruction context.
+
+**How the miner is prevented from withdrawing:**
+
+In production, funds sit in Token Account PDA with no private key. The program have **no withdraw instruction** to the miner role. The miner can only call `open_position` and `close_position`. Even if the miner created a custom transaction targeting the token account directly, the program would reject it because the account is owned by the vault_state PDA.
+
+In this implementation, operations are mocked therefore positions are pure data and no real tokens are deposited. 
+Therefore no withdraw instruction is implemented for the protocol or the miner.
+In production, a withdraw instruction would be added for the protocol only, together with the `has_one` constraint.
+
+**How to change the miner without migrating funds:**
+
+The protocol calls `set_miner(new_miner: Pubkey)`. Only `VaultState.miner` is updated in place. Funds, positions, ceiling and everything else is completely untouched. The key rotation is instant and atomic.
 
 ---
 
-## Tests
+### 1B — Ceiling Enforcement
 
-### Required Adversarial Tests
+**How and where:**
 
-1. **Miner calls `set_ceiling`** → rejected (`WrongAuthority`)
-2. **Miner opens position that would exceed ceiling** → rejected (`CeilingExceeded`)
-3. **Protocol calls `open_position`** → rejected (`WrongAuthority`)
+The ceiling is implemented in the `VaultState` PDA inside same program.
 
-### Additional Tests
+```rust
+// On every open_position — atomic with the state write:
+let new_deployed = vault.deployed_l
+    .checked_add(liquidity)
+    .ok_or(ErrorCode::ArithmeticOverflow)?;
+require!(new_deployed <= vault.ceiling, ErrorCode::CeilingExceeded);
 
-4. Protocol initializes vault → VaultState created with correct fields
-5. Miner opens valid position within ceiling → Position PDA created, deployed_l increases
-6. Miner closes their position → Position PDA deleted, deployed_l decreases
-7. Protocol force-closes a miner position → Position PDA deleted, deployed_l decreases
-8. Miner closes position then opens new one within freed capacity → allowed
-9. Old miner tries to act after miner is rotated → rejected (`WrongAuthority`)
-10. Ceiling set below current deployed_l, miner tries to open new position → rejected (`CeilingExceeded`)
-11. Unknown signer calls any instruction → rejected (`WrongAuthority`)
+// On every close_position / force_close_position:
+vault.deployed_l = vault.deployed_l
+    .checked_sub(position.liquidity)
+    .ok_or(ErrorCode::ArithmeticOverflow)?;
+```
+
+**Why?**
+
+Atomicity. If the ceiling lived in a separate program there would be a window between checking and acting. Inside one instruction the check and state update together.
+
+**Can the miner split transactions to bypass the ceiling?**
+
+No. `deployed_l` is an on-chain field read every time from the latest committed state at the start of each transaction. Each transaction is atomic and there is no stale read, no race condition, no split-transaction trick. The only way `deployed_l` decreases is when a position is closed.
 
 ---
 
-## Running The Program
+## ⚠️ Error Codes
+
+| Code | Message | When |
+|---|---|---|
+| `WrongAuthority` | Signer is not the expected authority | Wrong role calls an instruction |
+| `CeilingExceeded` | Opening this position would exceed the deployment ceiling | `deployed_l + liquidity > ceiling` |
+| `InvalidPosition` | Position does not belong to this vault | Cross-vault substitution attempt |
+| `ArithmeticOverflow` | Arithmetic overflow in liquidity calculation | u128 overflow on add/sub |
+
+---
+
+## 🧪 Tests
+
+### Main Cases
+
+| # | Test | Expected |
+|---|---|---|
+| 1 ★ | Miner calls `set_ceiling` | `WrongAuthority` |
+| 2 ★ | Miner opens position exceeding ceiling | `CeilingExceeded` |
+| 3 ★ | Protocol calls `open_position` | `WrongAuthority` |
+
+### Additional Cases
+
+| # | Test | Expected |
+|---|---|---|
+| 4 | Protocol initializes vault | VaultState fields correct |
+| 5 | Miner opens valid position | Position PDA created, `deployed_l` increases |
+| 6 | Miner closes their position | Position PDA deleted, `deployed_l` decreases |
+| 7 | Protocol `force_close_position` | Position PDA deleted, `deployed_l` decreases |
+| 8 | Close then reopen within freed capacity | Succeeds |
+| 9 | Old miner acts after `set_miner` | `WrongAuthority` |
+| 10 | Ceiling set below `deployed_l`, new open attempted | `CeilingExceeded` |
+| 11 | Stranger calls any instruction | `WrongAuthority` |
+
+```
+11 passing (6s) ✅
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (nightly)
+- [Solana CLI](https://docs.solana.com/cli/install-solana-cli-tools)
+- [Anchor CLI](https://www.anchor-lang.com/docs/installation) 0.32.1
+- Node.js + Yarn
+
+### Install & Build
 
 ```bash
-# Install dependencies
-npm install
+# Install JS dependencies
+yarn install
 
-# Build
+# Build the program
 anchor build
 
-# Run tests
+# Sync program ID into lib.rs and Anchor.toml
+anchor keys sync
+
+# Rebuild with correct program ID
+anchor build
+```
+
+### Run Tests
+
+```bash
 anchor test
 ```
 
+### Deploy to Devnet
+
+```bash
+# Switch to devnet
+solana config set --url devnet
+
+# Airdrop SOL for deployment fees
+solana airdrop 2
+
+# Update Anchor.toml cluster to devnet, then deploy
+anchor deploy --provider.cluster devnet
+```
+
 ---
 
-## Design Decisions
+## 💡 Design Decisions
 
-**Why a running counter for deployed_l instead of summing positions at runtime**
-A running counter is manipulation-resistant. Summing a list at runtime would require passing all position accounts in every transaction, which is complex and attackable by passing incomplete account lists. The counter is always accurate and atomic.
+**Running counter for `deployed_l` instead of summing positions at runtime**
+A running counter is manipulation-resistant and O(1). Summing a list at runtime would require passing all position accounts in every transaction — complex and attackable by omitting accounts. The counter is always accurate, always atomic.
 
-**Why separate Position PDAs instead of a Vec on VaultState**
-Solana accounts have a maximum size. A Vec would hit limits quickly with many open positions. Separate PDAs are independently verifiable, deletable on close (rent returned), and findable by seeds without scanning a list.
+**Separate Position PDAs instead of a Vec on VaultState**
+Solana accounts have a maximum size. A Vec would hit limits quickly. Separate PDAs are independently verifiable, deletable on close (rent returned), and findable by seeds in O(1) without scanning a list.
 
-**Why the ceiling check lives in the same program and not a separate layer**
-Atomicity. If the ceiling lived in a separate program, there would be a gap between checking and acting. Inside one instruction the check and state change happen together or not at all.
+**Ceiling check in same instruction as position creation**
+Atomicity. The check and the state write are a single atomic operation. There is no window to exploit between them.
 
-**Why LP operations are mocked**
-Positions are pure data `{ id, tick_lower, tick_upper, liquidity }`. No real Raydium CPI is required for this challenge. In production, `open_position` would CPI into the Raydium CLMM program to mint a real position and `close_position` would burn it.
+**Positions store a vault backlink**
+`position.vault` stores the VaultState address. This prevents cross-vault substitution attacks where a malicious actor passes a Position PDA from a different vault to manipulate another vault's `deployed_l` counter.
 
-**Why Squads for production but not for this challenge**
-Squads adds multisig security to the protocol authority so no single key can drain the vault. The program code does not change at all — it just checks whoever is stored in `vault.protocol`. Upgrading from a single keypair to Squads in production requires no program changes, only a change to which pubkey is passed at `initialize_vault`.
+**NFT mint stored in Position PDA (production)**
+In production, `open_position` CPIs into Raydium which returns an NFT mint representing ownership of the liquidity position. This NFT mint is stored in the Position PDA so `close_position` can CPI back into Raydium with the correct NFT to burn the position and retrieve funds plus fees.
+
+**Squads for production, single keypair for this challenge**
+Squads adds multisig security so no single key can drain the vault. The program code is identical — it just checks whoever is stored in `vault.protocol`. Upgrading requires no program changes, only a change to which pubkey is passed at `initialize_vault`.
+
+---
+
+---
+
+## ⚠️ Implementation Disclaimer
+
+This program is built for the ForeverMoney (SN98) Solana Developer Challenge.
+LP operations are mocked per the challenge specification — positions are pure data `{ id, tick_lower, tick_upper, liquidity }`. 
+
+The following are intentionally not implemented in this version:
+
+| Feature | Reason | Production Plan |
+|---|---|---|
+| Token Account PDA | No real tokens in mocked version | SPL token account PDA holding actual funds |
+| Withdraw instruction | No real tokens to withdraw | Protocol-only CPI to SPL token program |
+| Raydium CPI | LP operations are mocked | `open_position` CPIs into Raydium CLMM, stores NFT mint in Position PDA |
+| NFT mint storage | No real Raydium integration | Position PDA stores `nft_mint: Pubkey` returned by Raydium |
+
+The security layer — role separation, ceiling enforcement, miner rotation and cross-vault protection — is fully implemented and production-ready.
+---
+
+## ⚠️ Implementation Disclaimer
+
+This program is built for the ForeverMoney (SN98) Solana Developer Challenge.
+LP operations are mocked per the challenge specification — positions are pure 
+data `{ id, tick_lower, tick_upper, liquidity }`. 
+
+The following are intentionally not implemented in this version:
+
+| Feature | Reason | Production Plan |
+|---|---|---|
+| Token Account PDA | No real tokens in mocked version | SPL token account PDA holding actual funds |
+| Withdraw instruction | No real tokens to withdraw | Protocol-only CPI to SPL token program |
+| Raydium CPI | LP operations are mocked | `open_position` CPIs into Raydium CLMM, stores NFT mint in Position PDA |
+| NFT mint storage | No real Raydium integration | Position PDA stores `nft_mint: Pubkey` returned by Raydium |
+
+The security layer — role separation, ceiling enforcement, miner rotation, 
+and cross-vault protection — is fully implemented and production-ready.
